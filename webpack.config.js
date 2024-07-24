@@ -1,8 +1,9 @@
 const path = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const MiniCssExtractPlugin = require("mini-css-extract-plugin");
-const LodashModuleReplacementPlugin = require('lodash-webpack-plugin');
 const {BundleAnalyzerPlugin} = require('webpack-bundle-analyzer');
+const sass = require('sass');
+
 const isProduction = process.env.NODE_ENV === 'production';
 
 module.exports = [
@@ -16,24 +17,26 @@ function create(file) {
   const name = parsed.name;
   const ext = parsed.ext;
   const plugins = [
-    new LodashModuleReplacementPlugin(),
     // new BundleAnalyzerPlugin(),
   ];
+
   if (ext === '.tsx') {
     plugins.push(new HtmlWebpackPlugin({
       filename: `${name}.html`,
-      inject: false,
+      inject: 'body',
       template: require('html-webpack-template'),
       appMountId: 'root',
       title: 'SyncMyCookie'
     }));
   }
+
   if (isProduction) {
     plugins.push(new MiniCssExtractPlugin({
       filename: '[name].[contenthash:8].css',
       chunkFilename: '[name].[contenthash:8].chunk.css',
     }));
   }
+
   return {
     mode: isProduction ? 'production' : 'development',
     entry: file,
@@ -52,29 +55,44 @@ function create(file) {
         {
           test: /\.tsx?$/,
           use: [
-            { loader: 'babel-loader' },
-            { loader: 'awesome-typescript-loader' },
-          ]
+            {
+              loader: 'ts-loader',
+              options: {
+                transpileOnly: true,
+                experimentalWatchApi: true,
+              },
+            },
+          ],
+          exclude: /node_modules/,
         },
         {
           test: /\.(scss|sass)$/,
           exclude: /\.module\.(scss|sass)$/,
           use: getStyleLoaders(
             {
-              importLoaders: 2,
+              importLoaders: 3,
+              sourceMap: !isProduction,
             },
-            'sass-loader'
+            'sass-loader',
+            {
+              implementation: sass,
+            }
           ),
         },
         {
           test: /\.module\.(scss|sass)$/,
           use: getStyleLoaders(
             {
-              importLoaders: 2,
-              modules: true,
-              localIdentName: '[name]__[local]__[hash:base64:5]'
+              importLoaders: 3,
+              sourceMap: !isProduction,
+              modules: {
+                localIdentName: '[name]__[local]__[hash:base64:5]',
+              },
             },
-            'sass-loader'
+            'sass-loader',
+            {
+              implementation: sass,
+            }
           ),
         },
         {
@@ -95,37 +113,35 @@ function create(file) {
 
 function getStyleLoaders(cssOptions, preProcessor, preProcessorOptions) {
   const loaders = [
-    isProduction ? { loader: MiniCssExtractPlugin.loader } : 'style-loader',
+    isProduction ? MiniCssExtractPlugin.loader : 'style-loader',
     {
       loader: 'css-loader',
       options: cssOptions,
     },
     {
-      // Options for PostCSS as we reference these options twice
-      // Adds vendor prefixing based on your specified browser support in
-      // package.json
       loader: 'postcss-loader',
       options: {
-        // Necessary for external CSS imports to work
-        // https://github.com/facebook/create-react-app/issues/2677
-        ident: 'postcss',
-        plugins: () => [
-          require('postcss-flexbugs-fixes'),
-          require('postcss-preset-env')({
-            autoprefixer: {
-              flexbox: 'no-2009',
-            },
-            stage: 3,
-          }),
-        ],
+        postcssOptions: {
+          plugins: [
+            'postcss-flexbugs-fixes',
+            ['postcss-preset-env', {
+              autoprefixer: {
+                flexbox: 'no-2009',
+              },
+              stage: 3,
+            }],
+          ],
+        },
       },
     },
   ];
+
   if (preProcessor) {
     loaders.push({
       loader: preProcessor,
       options: preProcessorOptions,
     });
   }
+
   return loaders;
 };
